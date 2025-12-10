@@ -1,0 +1,269 @@
+name: Deploy Portfolio Website
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-1
+  TERRAFORM_VERSION: 1.0
+
+jobs:
+  # =========================================================================
+  # Validation Job - Check Terraform & Code
+  # =========================================================================
+  validate:
+    name: Validate Infrastructure & Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Format Check
+        working-directory: terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan (Dry Run)
+        working-directory: terraform
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          terraform plan -out=tfplan -input=false
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          retention-days: 1
+
+  # =========================================================================
+  # Build Job (Optional) - Minify & Optimize Assets
+  # =========================================================================
+  build:
+    name: Build Website Assets
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify Website Structure
+        run: |
+          echo "✓ Checking HTML file..."
+          test -f src/index.html && echo "✓ index.html found" || (echo "✗ index.html not found" && exit 1)
+          
+          echo "✓ Checking CSS files..."
+          test -f src/css/style.css && echo "✓ style.css found" || (echo "✗ style.css not found" && exit 1)
+          test -f src/css/responsive.css && echo "✓ responsive.css found" || (echo "✗ responsive.css not found" && exit 1)
+          
+          echo "✓ Checking JavaScript file..."
+          test -f src/js/main.js && echo "✓ main.js found" || (echo "✗ main.js not found" && exit 1)
+
+      - name: Verify HTML Validity (Basic Check)
+        run: |
+          echo "✓ Basic HTML syntax check..."
+          # Check for basic HTML structure
+          grep -q "<!DOCTYPE html>" src/index.html && echo "✓ DOCTYPE found" || echo "⚠ DOCTYPE might be missing"
+          grep -q "<html" src/index.html && echo "✓ HTML tag found" || echo "⚠ HTML tag might be missing"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-build
+          path: src/
+          retention-days: 1
+
+  # =========================================================================
+  # Deploy Job - Apply Terraform & Upload Website
+  # =========================================================================
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    needs: [validate, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          terraform apply -input=false tfplan 2>&1 | tee apply.log
+          terraform output -raw cloudfront_domain_name > ../CLOUDFRONT_URL.txt
+          terraform output -raw cloudfront_distribution_id > ../DISTRIBUTION_ID.txt
+
+      - name: Capture Deployment Info
+        id: deploy-info
+        run: |
+          CLOUDFRONT_URL=$(cat CLOUDFRONT_URL.txt)
+          DISTRIBUTION_ID=$(cat DISTRIBUTION_ID.txt)
+          echo "cloudfront_url=$CLOUDFRONT_URL" >> $GITHUB_OUTPUT
+          echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+          echo "Website URL: https://$CLOUDFRONT_URL"
+          echo "Distribution ID: $DISTRIBUTION_ID"
+
+      - name: Download Website Build
+        uses: actions/download-artifact@v4
+        with:
+          name: website-build
+          path: website-build/
+
+      - name: Upload Website to S3
+        env:
+          S3_BUCKET: ${{ steps.deploy-info.outputs.s3_bucket }}
+        run: |
+          # Get S3 bucket name from Terraform output
+          cd terraform
+          S3_BUCKET=$(terraform output -raw s3_bucket_name)
+          cd ..
+          
+          echo "Uploading website to S3 bucket: $S3_BUCKET"
+          aws s3 sync website-build/ s3://$S3_BUCKET/ \
+            --delete \
+            --cache-control "public, max-age=3600" \
+            --exclude ".DS_Store" \
+            --exclude "*.git*"
+          
+          echo "✓ Website uploaded to S3"
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          DISTRIBUTION_ID=${{ steps.deploy-info.outputs.distribution_id }}
+          echo "Invalidating CloudFront cache for distribution: $DISTRIBUTION_ID"
+          
+          aws cloudfront create-invalidation \
+            --distribution-id $DISTRIBUTION_ID \
+            --paths "/*"
+          
+          echo "✓ CloudFront cache invalidated"
+
+      - name: Get Deployment Summary
+        run: |
+          cd terraform
+          echo "=== Deployment Summary ===" | tee deployment-summary.txt
+          echo "" >> deployment-summary.txt
+          echo "✓ Terraform Applied Successfully" >> deployment-summary.txt
+          echo "" >> deployment-summary.txt
+          echo "Website URL:" >> deployment-summary.txt
+          echo "https://${{ steps.deploy-info.outputs.cloudfront_url }}" >> deployment-summary.txt
+          echo "" >> deployment-summary.txt
+          echo "Distribution ID: ${{ steps.deploy-info.outputs.distribution_id }}" >> deployment-summary.txt
+          echo "" >> deployment-summary.txt
+          echo "S3 Bucket: $(terraform output -raw s3_bucket_name)" >> deployment-summary.txt
+          echo "" >> deployment-summary.txt
+          echo "Resources:" >> deployment-summary.txt
+          terraform output >> deployment-summary.txt
+          
+          cat deployment-summary.txt
+
+      - name: Upload Deployment Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-summary
+          path: terraform/deployment-summary.txt
+
+  # =========================================================================
+  # Post-Deployment Verification
+  # =========================================================================
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Deployment Info
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-summary
+
+      - name: Verify Website is Accessible
+        run: |
+          # Get CloudFront URL from summary
+          WEBSITE_URL=$(grep "https://" deployment-summary.txt | head -1)
+          echo "Verifying website: $WEBSITE_URL"
+          
+          # Wait a moment for CloudFront to be ready
+          sleep 10
+          
+          # Check if website is accessible
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$WEBSITE_URL")
+          
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "304" ]; then
+            echo "✓ Website is accessible (HTTP $HTTP_CODE)"
+          else
+            echo "⚠ Website returned HTTP $HTTP_CODE"
+          fi
+
+  # =========================================================================
+  # Notification Job
+  # =========================================================================
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [deploy, verify]
+    if: always()
+
+    steps:
+      - name: Download Deployment Summary
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-summary
+        continue-on-error: true
+
+      - name: Deployment Status
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ] && [ "${{ needs.verify.result }}" = "success" ]; then
+            echo "✅ Deployment completed successfully!"
+            echo ""
+            cat deployment-summary.txt || echo "View artifacts for deployment details"
+          elif [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "⚠️ Deployment applied but verification had issues"
+            echo "Check the workflow logs for details"
+          else
+            echo "❌ Deployment failed"
+            echo "Check the workflow logs for error details"
+          fi
