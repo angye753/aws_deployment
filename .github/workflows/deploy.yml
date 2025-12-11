@@ -27,6 +27,10 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
       - name: Terraform Format Check
         working-directory: terraform
         run: terraform fmt -check -recursive
@@ -124,6 +128,10 @@ jobs:
         with:
           name: tfplan
           path: terraform/
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
 
       - name: Terraform Apply
         working-directory: terraform
