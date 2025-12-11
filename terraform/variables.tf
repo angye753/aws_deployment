@@ -36,7 +36,7 @@ variable "tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)
   default = {
-    Project     = "Portfolio"
-    ManagedBy   = "Terraform"
+    Project   = "Portfolio"
+    ManagedBy = "Terraform"
   }
 }

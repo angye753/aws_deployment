@@ -69,7 +69,7 @@ resource "aws_s3_bucket_website_configuration" "website" {
   }
 
   error_document {
-    key = "index.html"  # Route 404s to index.html for SPA support
+    key = "index.html" # Route 404s to index.html for SPA support
   }
 
   depends_on = [aws_s3_bucket_public_access_block.website]
@@ -179,9 +179,9 @@ resource "aws_cloudfront_distribution" "website" {
 
 # Create IAM role for GitHub Actions (commented out - uncomment if using GitHub Actions)
 resource "aws_iam_role" "github_actions" {
-  count = 0  # Set to 1 to enable GitHub Actions role
+  count = 0 # Set to 1 to enable GitHub Actions role
 
-  name               = "${var.project_name}-github-actions-role"
+  name = "${var.project_name}-github-actions-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -202,10 +202,10 @@ resource "aws_iam_role" "github_actions" {
 
 # IAM policy for S3 and CloudFront access
 resource "aws_iam_role_policy" "github_actions_policy" {
-  count = 0  # Set to 1 to enable GitHub Actions policy
+  count = 0 # Set to 1 to enable GitHub Actions policy
 
-  name   = "${var.project_name}-github-actions-policy"
-  role   = aws_iam_role.github_actions[0].id
+  name = "${var.project_name}-github-actions-policy"
+  role = aws_iam_role.github_actions[0].id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

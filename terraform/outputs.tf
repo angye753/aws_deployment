@@ -41,13 +41,13 @@ output "github_actions_role_arn" {
 output "deployment_info" {
   description = "Summary of deployment information"
   value = {
-    bucket_name          = aws_s3_bucket.website.id
-    cloudfront_url       = "https://${aws_cloudfront_distribution.website.domain_name}"
-    distribution_id      = aws_cloudfront_distribution.website.id
-    region               = var.aws_region
-    environment          = var.environment
-    https_enforced       = true
-    oai_configured       = true
-    versioning_enabled   = var.enable_versioning
+    bucket_name        = aws_s3_bucket.website.id
+    cloudfront_url     = "https://${aws_cloudfront_distribution.website.domain_name}"
+    distribution_id    = aws_cloudfront_distribution.website.id
+    region             = var.aws_region
+    environment        = var.environment
+    https_enforced     = true
+    oai_configured     = true
+    versioning_enabled = var.enable_versioning
   }
 }
