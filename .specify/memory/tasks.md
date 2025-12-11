@@ -164,20 +164,22 @@
   - Step: Optimize images (optional - reduce file sizes)
   - Step: Generate build artifacts (upload to GitHub or use for deploy)
 
-- [ ] T025 [P] [US2] Implement Deploy job in GitHub Actions workflow
-  - Step: Checkout code
-  - Step: Setup AWS credentials from GitHub secrets
-  - Step: Setup Terraform
-  - Step: `terraform init` with backend
-  - Step: `terraform apply` (auto-approve for main branch)
-  - Step: Invalidate CloudFront cache (clear CDN)
-  - Step: Report status (success/failure notification)
+- [x] T025 [P] [US2] Implement Deploy job in GitHub Actions workflow ✅ CONFIGURED (Ready to Run)
+  - Step: Checkout code ✓
+  - Step: Setup AWS credentials from GitHub secrets ✓ (secrets now configured)
+  - Step: Setup Terraform ✓
+  - Step: `terraform init` with backend ✓
+  - Step: `terraform apply` (auto-approve for main branch) ✓
+  - Step: Upload website to S3 ✓ (will execute on next push/trigger)
+  - Step: Invalidate CloudFront cache (clear CDN) ✓
+  - Step: Report status (success/failure notification) ✓
+  - Status: Ready to test! See TRIGGER_GITHUB_ACTIONS.md
 
-- [ ] T026 [US2] Configure GitHub repository secrets
-  - Secret: `AWS_ACCESS_KEY_ID` (IAM user for GitHub Actions)
-  - Secret: `AWS_SECRET_ACCESS_KEY` (IAM user for GitHub Actions)
-  - Secret: `AWS_REGION` (set to `eu-west-1`)
-  - Document: How to add secrets in GitHub UI
+- [x] T026 [US2] Configure GitHub repository secrets ✅ COMPLETE
+  - Secret: `AWS_ACCESS_KEY_ID` (IAM user for GitHub Actions) ✓ Added
+  - Secret: `AWS_SECRET_ACCESS_KEY` (IAM user for GitHub Actions) ✓ Added
+  - Secret: `AWS_REGION` (set to `eu-west-1`) ✓ Added
+  - Document: How to add secrets in GitHub UI - See GITHUB_SECRETS_GUIDE.md
 
 - [ ] T027 [US2] Test GitHub Actions workflow with manual dispatch
   - Test: Manual trigger via GitHub UI (`workflow_dispatch`)
