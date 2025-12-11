@@ -185,6 +185,46 @@ After applying Terraform, you'll get:
 - `cloudfront_domain_name`: Your website URL
 - `cloudfront_distribution_id`: For cache invalidation
 
+### Remote Backend Configuration (S3 + DynamoDB)
+
+For production deployments, use a remote backend to enable:
+- **Team Collaboration**: Shared state file across team members
+- **State Locking**: DynamoDB prevents concurrent modifications
+- **Encryption**: Sensitive data encrypted at rest
+- **Versioning**: S3 versioning allows rollback to previous states
+
+#### Setup Remote Backend
+
+1. **Run bootstrap script** (creates S3 bucket + DynamoDB table)
+   ```bash
+   chmod +x bootstrap.sh
+   ./bootstrap.sh
+   ```
+
+2. **Initialize Terraform with remote backend**
+   ```bash
+   cd terraform
+   terraform init
+   # Answer 'yes' when prompted to copy local state to S3
+   ```
+
+3. **Verify remote state is active**
+   ```bash
+   terraform state list  # Should work (pulling from S3)
+   ```
+
+**Reference Documentation**:
+- 📖 Full Guide: `BACKEND_SETUP_GUIDE.md`
+- ⚡ Quick Start: `BACKEND_QUICK_REFERENCE.md`
+
+**Backend Resources Created**:
+- S3 Bucket: `terraform-state-angelica-portfolio-production-{account-id}`
+  - Versioning enabled
+  - Encryption enabled (AES256)
+  - Public access blocked
+- DynamoDB Table: `terraform-state-angelica-portfolio-production-locks`
+  - Manages state locks during terraform operations
+
 ## 📊 Performance & Security
 
 ### Performance Targets
