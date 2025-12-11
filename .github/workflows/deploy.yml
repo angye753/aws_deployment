@@ -133,6 +133,35 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      - name: Ensure existing S3 bucket is tracked by Terraform (import if needed)
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          # Read project_name and environment from terraform.tfvars
+          PROJECT_NAME=$(sed -nE "s/^project_name\s*=\s*\"?([^\"]+)\"?/\1/p" terraform.tfvars)
+          ENVIRONMENT=$(sed -nE "s/^environment\s*=\s*\"?([^\"]+)\"?/\1/p" terraform.tfvars)
+
+          # Get AWS account id
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          # Compute bucket name using the same local logic
+          BUCKET_NAME="${PROJECT_NAME}-${ENVIRONMENT}-${ACCOUNT_ID}"
+
+          echo "Computed bucket name: $BUCKET_NAME"
+
+          # If the aws_s3_bucket.website resource is not in state, but the bucket exists, import it
+          if ! terraform state list | grep -q '^aws_s3_bucket.website$'; then
+            echo "aws_s3_bucket.website not found in state. Checking if bucket exists..."
+            if aws s3api head-bucket --bucket "$BUCKET_NAME" >/dev/null 2>&1; then
+              echo "Bucket $BUCKET_NAME exists - importing into Terraform state"
+              terraform import aws_s3_bucket.website "$BUCKET_NAME"
+            else
+              echo "Bucket $BUCKET_NAME does not exist - Terraform will create it"
+            fi
+          else
+            echo "aws_s3_bucket.website already present in Terraform state"
+          fi
+
       - name: Terraform Apply
         working-directory: terraform
         run: |
